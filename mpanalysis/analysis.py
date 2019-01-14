@@ -858,6 +858,6 @@ def my_interpolate_3D2D_mean(cube_in,cube_grid,coordinates,method='linear',heigh
     cube_out.rename(cube_in.name())
     cube_out.units=cube_in.units
 
-    return(cube_out)
+    return cube_out
 
 
