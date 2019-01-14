@@ -33,13 +33,8 @@ def get_timing(track,process=None,measure=None,value=None):
         if index:
             time_process=track_cell.loc[index,'time_cell']
         else:
-            time_process=pd.NaT 
+            time_process=None
             
-#        print(type(cell))
-#        print(type(time_start))
-#        print(type(time_end))
-#        print(type(lifetime))
-#        print(type(time_process))
         df_out=df_out.append({'cell':cell,
                                 'time_start': time_start, 
                                 'time_end': time_end, 
