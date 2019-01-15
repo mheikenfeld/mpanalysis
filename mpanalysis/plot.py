@@ -32,14 +32,20 @@ def plot_piecharts_color_time(cubelist_in, Aux,
 
     coord_names=[coord.name() for coord in cube_1.coords()]
     if 'time_cell' in coord_names:
-        x = cube_1.coord('time_cell').points/60
-    else:
-        x = cube_1.coord('time').points
-     
+        if cube_1.coords('time_cell').units=='minute':
+            x = cube_1.coord('time_cell').points/60
+        else:
+            x = np.array([cube_1.coord('time_cell').units.num2date(cube_1.coord('time_cell').points[0]).hour * 60 + cube_1.coord('time').units.num2date(cube_1.coord('time_cell').points[i]).minute for i in range(len(cubelist_in[0].coord('time_cell').units.num2date(cube_1.coord('time').points)))])
+
+    if 'time' in coord_names:
+        if cube_1.coords('time').units=='minute':
+            x = cube_1.coord('time').points/60
+        else:
+            x = np.array([cube_1.coord('time').units.num2date(cube_1.coord('time').points[0]).hour * 60 + cube_1.coord('time').units.num2date(cube_1.coord('time').points[i]).minute for i in range(len(cubelist_in[0].coord('time').units.num2date(cube_1.coord('time').points)))])
+            
     if x_shift:
         x=x+x_shift
 
-    #x = np.array([cube_1.coord('time').units.num2date(cube_1.coord('time').points[0]).hour * 60 + cube_1.coord('time').units.num2date(cube_1.coord('time').points[i]).minute for i in range(len(cubelist_in[0].coord('time').units.num2date(cube_1.coord('time').points)))])
     y = cube_1.coord('geopotential_height').points / 1000
     if xlim==None:
          xlim=[x[0] - np.diff(x)[0], x[-1] + np.diff(x)[0]]
