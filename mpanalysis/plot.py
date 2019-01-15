@@ -32,17 +32,19 @@ def plot_piecharts_color_time(cubelist_in, Aux,
 
     coord_names=[coord.name() for coord in cube_1.coords()]
     if 'time_cell' in coord_names:
-        if cube_1.coords('time_cell').units=='minute':
-            x = cube_1.coord('time_cell').points/60
-        else:
-            x = np.array([cube_1.coord('time_cell').units.num2date(cube_1.coord('time_cell').points[0]).hour * 60 + cube_1.coord('time').units.num2date(cube_1.coord('time_cell').points[i]).minute for i in range(len(cubelist_in[0].coord('time_cell').units.num2date(cube_1.coord('time').points)))])
+        time_coord=cube_1.coord('time_cell')
+    elif 'time' in coord_names:
+        time_coord=cube_1.coord('time')
+    else:
+        raise ValueError('missing time coordinate, must have coordinate time or time_cell')
 
-    if 'time' in coord_names:
-        if cube_1.coords('time').units=='minute':
-            x = cube_1.coord('time').points/60
-        else:
-            x = np.array([cube_1.coord('time').units.num2date(cube_1.coord('time').points[0]).hour * 60 + cube_1.coord('time').units.num2date(cube_1.coord('time').points[i]).minute for i in range(len(cubelist_in[0].coord('time').units.num2date(cube_1.coord('time').points)))])
-            
+    if time_coord.units=='minute':
+        x = time_coord.points
+    elif time_coord.units=='s':
+        x = time_coord.points/60
+    else:
+        x = (time_coord.units.num2date(time_coord.points)-time_coord.units.num2date(time_coord.points[0])).total_seconds()/60
+
     if x_shift:
         x=x+x_shift
 
