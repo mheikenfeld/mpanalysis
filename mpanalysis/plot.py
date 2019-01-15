@@ -43,7 +43,7 @@ def plot_piecharts_color_time(cubelist_in, Aux,
     elif time_coord.units=='s':
         x = time_coord.points/60
     else:
-        x = (time_coord.units.num2date(time_coord.points)-time_coord.units.num2date(time_coord.points[0])).total_seconds()/60
+        x = [dt.total_seconds()/60 for dt in time_coord.units.num2date(time_coord.points)-time_coord.units.num2date(time_coord.points[0])]
 
     if x_shift:
         x=x+x_shift
