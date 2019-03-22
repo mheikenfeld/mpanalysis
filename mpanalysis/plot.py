@@ -198,7 +198,7 @@ def plot_piecharts_slice(cubelist_in, Aux, colors_in=None,names_in=None, axes=No
     
     if legend_piecharts:
         patches_legend = []
-        names_in['Other']='Other'
+        # names_in['Other']='Other'
         for cube in cubelist_in:
             patches_legend.append(patches.Patch(color=colors_in[cube.name()], label=names_in[cube.name()]))
 
