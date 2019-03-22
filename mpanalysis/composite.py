@@ -57,29 +57,77 @@ def latent_heating(track):
 
     return latent_heating
 
-def make_timings(track,threshold_value=None):
+def make_timings(track,threshold_value_processes=None,threshold_value_mass=None):
     track['total_latent_heating']=latent_heating(track)
-    timing_latent_heating_max=get_timing(track,process='total_latent_heating',measure='max',value=threshold_value)
-    timing_Freezing_first=get_timing(track,process='Freezing',measure='first',value=threshold_value)
-    timing_Condensation_max=get_timing(track,process='Condensation',measure='max',value=threshold_value)
-    timing_Freezing_max=get_timing(track,process='Freezing',measure='max',value=threshold_value)
+    timing_latent_heating_max=get_timing(track,process='total_latent_heating',measure='max',value=threshold_value_processes)
+    timing_Freezing_first=get_timing(track,process='Freezing',measure='first',value=threshold_value_processes)
+    timing_Condensation_max=get_timing(track,process='Condensation',measure='max',value=threshold_value_processes)
+    timing_Freezing_max=get_timing(track,process='Freezing',measure='max',value=threshold_value_processes)
+    timing_Rain_max=get_timing(track,process='Rain formation',measure='max',value=threshold_value_processes)
+    
+    timing_totalwater_max=get_timing(track,process='total_water_mass',measure='max',value=threshold_value_mass)
+    timing_liquidwater_max=get_timing(track,process='liquid_water_mass',measure='max',value=threshold_value_mass)
+    timing_frozenwater_max=get_timing(track,process='frozen_water_mass',measure='max',value=threshold_value_mass)
+
     timing_out=timing_Freezing_first[['time_start','time_end','lifetime','cell']]
     
     timing_out['Freezing_first']=timing_Freezing_first['Freezing_first']
-    timing_out['Freezing_time_relative']=timing_Freezing_first['Freezing_first'].dt.total_seconds()/timing_Freezing_first['lifetime'].dt.total_seconds()    
+    timing_out['Freezing_time_relative']=timing_Freezing_first['Freezing_first'].dt.total_seconds()/timing_Freezing_first['lifetime'].dt.total_seconds()
     timing_out['Condensation_max_relative']=timing_Condensation_max['Condensation_max'].dt.total_seconds()/timing_Condensation_max['lifetime'].dt.total_seconds()
     timing_out['Freezing_max_relative']=timing_Freezing_max['Freezing_max'].dt.total_seconds()/timing_Freezing_max['lifetime'].dt.total_seconds()
     timing_out['Freezing_max']=timing_Freezing_max['Freezing_max']
-    timing_out['Condensation_max']=timing_Condensation_max['Condensation_max']        
+    timing_out['Condensation_max']=timing_Condensation_max['Condensation_max']   
     timing_out['Heating_max']=timing_latent_heating_max['total_latent_heating_max']        
     timing_out['Heating_max_relative']=timing_latent_heating_max['total_latent_heating_max'].dt.total_seconds()/timing_latent_heating_max['lifetime'].dt.total_seconds()
-
-    timing_out['category']=None
-    timing_out.at[timing_out['Freezing_time_relative']==0,'category']='cold'
-    timing_out.at[timing_out['Freezing_first'].isnull(),'category']='warm'
-    timing_out.at[(timing_out['Freezing_time_relative']>0) & (~timing_out['Freezing_first'].isnull()),'category']='warmcold'
-
+    
+    timing_out['total_max']=timing_totalwater_max['total_water_mass_max']
+    timing_out['liquid_max']=timing_liquidwater_max['liquid_water_mass_max']
+    timing_out['frozen_max']=timing_frozenwater_max['frozen_water_mass_max']
     return timing_out
+
+def make_values(track,timings,threshold_value_processes=None,threshold_value_mass=None):
+    values=timings[['cell','time_start','time_end']].copy()
+    values['Freezing_max']=None
+    values['Condensation_max']=None
+    values['Heating_max']=None
+    values['total_max']=None
+    values['liquid_max']=None
+    values['frozen_max']=None
+
+    
+    for i in values.index:
+        cell=values.at[i,'cell']
+        values.at[i,'Freezing_max']=track.loc[track['cell']==cell,'Freezing'].max()
+        values.at[i,'Condensation_max']=track.loc[track['cell']==cell,'Condensation'].max()
+        values.at[i,'Heating_max']=track.loc[track['cell']==cell,'total_latent_heating'].max()
+        values.at[i,'total_max']=track.loc[track['cell']==cell,'total_water_mass'].max()
+        values.at[i,'liquid_max']=track.loc[track['cell']==cell,'liquid_water_mass'].max()
+        values.at[i,'frozen_max']=track.loc[track['cell']==cell,'frozen_water_mass'].max()
+        values.at[i,'frozen_fraction_max']=track.loc[track['cell']==cell,'frozen_water_fraction'].max()
+    return values
+
+
+def categorise(track,timing_in,values_in):
+    timing_out=timing_in
+    category_out=timing_in[['cell','time_start','time_end']].copy()
+#     display(track.head(5))
+#     display(timing_in.head(5))
+    category_out['category']=None
+    Freezing_at_first=timing_in['Freezing_time_relative']==0
+    no_Freezing=timing_in['Freezing_first'].isnull()
+    no_ice=values['frozen_fraction_max']<0.03
+    Freezing_later=timing_out['Freezing_time_relative']>0 & ~timing_in['Freezing_first'].isnull()
+#     print(Freezing_at_first)
+    for i in timing_out.index:
+        if Freezing_at_first[i] and not no_ice[i]:
+            category_out.at[i,'category']='cold'
+        elif no_Freezing[i] and no_ice[i]:
+            category_out.at[i,'category']='warm'
+        elif Freezing_later[i] and not no_ice[i]:
+            category_out.at[i,'category']='warmcold'
+        else:
+            category_out.at[i,'category']='rest'
+    return category_out
 
 def composite_Processes_time(timing,model,case,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
     list_processes=['Condensation','Evaporation','Freezing','Melting','Deposition','Sublimation','Rain formation']
