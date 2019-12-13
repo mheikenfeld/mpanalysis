@@ -1,7 +1,8 @@
 from setuptools import setup
 
 setup(name='mpanalysis',
-      version='0.5',
+      use_scm_version=True,
+      setup_requires=['setuptools_scm'],
       description='Pathway analyses based on mpdiag and tobac',
       url='http://github.com/mheikenfeld/mpanalysis',
       author='Max Heikenfeld',
