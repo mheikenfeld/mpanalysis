@@ -167,7 +167,13 @@ def plot_piecharts_slice(cubelist_in, Aux, colors_in=None,names_in=None, axes=No
     if overlay:
         u = Aux.extract_strict('u_x').data
         w = Aux.extract_strict('upward_air_velocity').data
-        plot_quiver = axes.quiver(x, y, u, w, w, color='grey', cmap=plt.cm.coolwarm, clim=[-5.0, 5.0], scale=1000, linewidth=0.7, zorder=3, label='Wind vectors',rasterized=False)
+        if wind_scale is 'auto':
+            scale=wind_scale
+        else:
+            dx=(diff(x)[0]+diff(y)[0])/2
+            scale=dx/wind_scale
+            
+        plot_quiver = axes.quiver(x, y, u, w, w, color='grey', cmap=plt.cm.coolwarm, clim=[-5.0, 5.0], scale=scale,scale_units='xy', linewidth=0.7, zorder=3, label='Wind vectors',rasterized=False)
         if wind_vector:
             axes.quiverkey(plot_quiver, wind_vector_pos[0], wind_vector_pos[1], 30, '30 m/s', color='k', labelpos='E', coordinates='axes', fontproperties={'size': fontsize_scale})
         n_zoom = 5
@@ -265,3 +271,182 @@ def plot_hydrometeors_color_slice(Hydrometeors, Aux,
                                 colors_in=dict_hydrometeors_colors,names_in=dict_hydrometeors_names,
                                 **kwargs)
     return axes
+
+
+# Plots for Composites:
+
+def plot_processes_composite_integrated(Processes_Composite,
+                                        maxvalue=None,mp=None,aggregate_min=None,
+                                        xlim=None,ylim=None,xlim_profile=None,ylim_integrated=None,title=None,
+                                        figsize=(20/2.54,10/2.54),height_ratios=[1.8, 1],width_ratios=[4, 1]):
+    from matplotlib.axes import Axes
+    from matplotlib.gridspec import GridSpec
+    from mpdiag import processes_colors
+    from iris.analysis import MEAN,SUM
+    from copy import deepcopy
+    from iris.coord_categorisation import add_categorised_coord
+    from iris.cube import CubeList
+    #from mpanalysis.plot import plot_processes_color_time
+
+    dict_processes_colors, dict_processes_names = processes_colors(microphysics_scheme=mp,colors_processes='lumped')
+
+    if xlim is None:
+        xlim=[Processes_Composite[0].coord('time').points[0],
+              Processes_Composite[0].coord('time').points[-1]]
+    if ylim is None:
+        ylim=[Processes_Composite[0].coord('geopotential_height').points[0]/1000,
+              Processes_Composite[0].coord('geopotential_height').points[-1]/1000]
+
+    fig, ax = plt.subplots(nrows=2, ncols=2,
+                           #sharex='col', sharey='row',
+                            gridspec_kw={'height_ratios': height_ratios, 'width_ratios': width_ratios},
+                            figsize=figsize)
+    
+    fig.subplots_adjust(left=0.1,right=0.95,bottom=0.1,top=0.93,wspace=0.1,hspace=0.2)
+
+    Processes_Composite_copy=deepcopy(Processes_Composite)
+    
+    if aggregate_min is not None:
+
+        def get_min(coord,value):
+                minutes = value
+                return np.floor(minutes/aggregate_min)*aggregate_min+aggregate_min/2
+
+        processes_aggregated=CubeList()
+        for cube in Processes_Composite_copy:
+            if aggregate_min==5:
+                add_categorised_coord(cube, 'time_aggregated', 'time', get_min)
+                processes_aggregated.append(cube.aggregated_by(['time_aggregated'], MEAN))
+
+        processes_piecharts=processes_aggregated
+    else:
+        processes_piecharts=Processes_Composite
+
+    plot_processes_color_time(processes_piecharts,
+                                      None,
+                                      axes=ax[0,0], 
+                                      microphysics_scheme=mp, colors_processes='lumped', 
+                                      scaling='linear', minvalue=0, maxvalue=maxvalue,vscale=maxvalue,
+                                      piecharts_rasterized=False,
+                                      legend_piecharts=True,fontsize_legend=6,legend_piecharts_pos=(1.05,-0.25),
+                                      legend_overlay=False,legend_overlay_pos=(1,-0.5),
+                                      overlay=False,
+                                      xlabel=False, ylabel=False,
+                                      xlim=xlim,
+                                      ylim=ylim,
+                                      scale=True, unit_scale='kg s$^{-1}$ m$^{-1}$', fontsize_scale=6,
+                                      x_shift=0)
+
+    ax[0,0].plot([0,0],[0,20000],color='grey',ls='-')
+    for cube in Processes_Composite:
+        color=dict_processes_colors[cube.name()]
+        ax[0,1].plot(abs(cube.collapsed(('time'),SUM).data),cube.coord('geopotential_height').points/1000,color=color)
+        ax[1,0].plot(cube.coord('time').points,abs(cube.collapsed(('geopotential_height'),SUM).data),color=color)
+        #ax1[1,0].set_ylim(0,1000)
+#     ax[1,0].plot([0,0],[0,2e10],color='grey',ls='-')
+    ax[1,1].axis('off')
+    ax[1,0].ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    ax[0,1].ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    ax[1,0].set_xlim(xlim)    
+    ax[1,0].set_ylim(ylim_integrated)
+    ax[0,1].set_ylim(ylim)
+    ax[0,1].set_xlim(xlim_profile)
+    ax[0,0].set_ylabel('altitude (km)')
+    ax[1,0].set_xlabel('time (min)')
+    ax[1,0].set_ylabel('integrated (kg s$^{-1}$)')
+    ax[0,0].xaxis.set_tick_params(labelbottom=False)
+    ax[0,1].yaxis.set_tick_params(labelleft=False)
+    ax[0,1].set_xlabel('integrated (kg m$^{-1}$)',labelpad=10)
+    if title:  
+        ax[0,0].set_title(title,loc='left')
+    
+    return fig
+
+def plot_hydrometeors_composite_integrated(Hydrometeors_Composite,
+                                           maxvalue=None,aggregate_min=None,mp=None, 
+                                           xlim=None,ylim=None,xlim_profile=None,ylim_integrated=None,
+                                           title=None,
+                                           figsize=(20/2.54,10/2.54),height_ratios=[1.8, 1],width_ratios=[4, 1]):
+
+    from mpdiag import hydrometeors_colors
+    from iris.analysis import MEAN,SUM
+    from iris.coord_categorisation import add_categorised_coord
+    from iris.cube import CubeList
+
+    from copy import deepcopy
+    dict_hydrometeors_colors, dict_hydrometeors_names = hydrometeors_colors(microphysics_scheme=mp)
+
+    if xlim is None:
+        xlim=[Hydrometeors_Composite[0].coord('time').points[0],Hydrometeors_Composite[0].coord('time').points[-1]]
+    if ylim is None:
+        ylim=[Hydrometeors_Composite[0].coord('geopotential_height').points[0]/1000,Hydrometeors_Composite[0].coord('geopotential_height').points[-1]/1000]
+
+    fig, ax = plt.subplots(nrows=2, ncols=2, 
+                           #sharex='col', sharey='row',
+                               gridspec_kw={'height_ratios': height_ratios, 'width_ratios': width_ratios},
+                               figsize=figsize)
+    
+    fig.subplots_adjust(left=0.1,right=0.95,bottom=0.1,top=0.93,wspace=0.1,hspace=0.2)
+
+    
+    Hydrometeors_Composite_copy=deepcopy(Hydrometeors_Composite)
+    
+    if aggregate_min is not None:
+
+        def get_min(coord,value):
+                minutes = value
+                return np.floor(minutes/aggregate_min)*aggregate_min+aggregate_min/2
+
+        hydrometeors_aggregated=CubeList()
+        for cube in Hydrometeors_Composite_copy:
+            if aggregate_min==5:
+                add_categorised_coord(cube, 'time_aggregated', 'time', get_min)
+                hydrometeors_aggregated.append(cube.aggregated_by(['time_aggregated'], MEAN))
+
+        hydrometeors_piecharts=hydrometeors_aggregated
+    else:
+        hydrometeors_piecharts=hydrometeors_Composite
+
+    
+    plot_hydrometeors_color_time(hydrometeors_piecharts,
+                                  Aux=None,
+                                  axes=ax[0,0], 
+                                  microphysics_scheme=mp, 
+                                  scaling='linear', minvalue=0, maxvalue=maxvalue,vscale=maxvalue,
+                                  piecharts_rasterized=False,
+                                  legend_piecharts=True,fontsize_legend=6,legend_piecharts_pos=(1.05,-0.25),
+                                  legend_overlay=False,legend_overlay_pos=(1,-0.6),
+                                  overlay=False,
+                                  xlabel=False, ylabel=False,
+                                  xlim=xlim,
+                                  ylim=ylim,
+                                  scale=True, unit_scale='kg m$^{-1}$ s$^{-1}$', fontsize_scale=6,
+                                  x_shift=0)
+
+    ax[0,0].plot([0,0],[0,20000],color='grey',ls='-')
+    for cube in Hydrometeors_Composite:
+        color=dict_hydrometeors_colors[cube.name()]
+        ax[0,1].plot(cube.collapsed(('time'),MEAN).data,cube.coord('geopotential_height').points/1000,color=color)
+        ax[1,0].plot(cube.coord('time').points,cube.collapsed(('geopotential_height'),SUM).data,color=color)
+        #ax1[1,0].set_ylim(0,1000)
+#     ax[1,0].plot([0,0],[0,2e10],color='grey',ls='-')
+    ax[1,1].axis('off')
+    
+    ax[0,0].set_ylabel('altitude (km)')
+    ax[1,0].set_xlabel('time (min)')
+    ax[1,0].set_xlim(xlim)    
+    ax[1,0].set_ylim(ylim_integrated)
+    ax[0,1].set_ylim(ylim)
+    ax[0,1].set_xlim(xlim_profile)
+
+    ax[1,0].set_ylabel('integrated (kg $^{-1}$)')
+    ax[1,0].ticklabel_format(style='sci', axis='y', scilimits=(0,0))
+    ax[0,1].ticklabel_format(style='sci', axis='x', scilimits=(0,0))
+    ax[0,0].xaxis.set_tick_params(labelbottom=False)
+    ax[0,1].yaxis.set_tick_params(labelleft=False)
+    ax[0,1].set_xlabel('integrated (kg m$^{-1}$)',labelpad=10)
+    
+    if title:  
+        ax[0,0].set_title(title,loc='left')
+    
+    return fig
