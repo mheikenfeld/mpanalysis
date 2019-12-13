@@ -37,8 +37,9 @@ install:
   - conda install -c conda-forge --quiet --file conda_requirements.txt
   - conda install -c conda-forge --quiet pytest 
   - PREFIX=$HOME/miniconda/envs/$ENV_NAME
-  - pip install --upgrade git+ssh://git@github.com/mheikenfeld/wrfcube.git
-  - pip install --upgrade git+ssh://git@github.com/mheikenfeld/ramscube.git
+  - pip install --upgrade git+ssh://git@github.com/mheikenfeld/piecharts.git
+  - pip install --upgrade git+ssh://git@github.com/mheikenfeld/mpdiag.git
+
 
   # Output debug info
   - conda list
