@@ -310,7 +310,7 @@ def composite_Precipitation_time(timing,model,case,cells='all',type_mask='_TWC',
     
     list_precip_types= ['surface_precipitation','surface_precipitation_accumulated']#,'surface_precipitation_instantaneous']
     savedir_0=os.path.join(acpc_workspace,f'Analysis/mheiken/Tracking/Save_1min/{version}/{model}/{case}/cells/{cell_0}')
-    Precipitation_0=pd.read_hdf(os.path.join(savedir_0,f'track_precipitation{type_mask}.h5','table')
+    Precipitation_0=pd.read_hdf(os.path.join(savedir_0,f'track_precipitation{type_mask}.h5','table'))
     
     if model=='WRF':
         Precipitation_0['surface_precipitation']=1/3600*Precipitation_0['surface_precipitation_average']
