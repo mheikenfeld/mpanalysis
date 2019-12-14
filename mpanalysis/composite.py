@@ -89,6 +89,7 @@ def make_values(track,timings,threshold_value_processes=None,threshold_value_mas
     values=timings[['cell','time_start','time_end']].copy()
     values['Freezing_max']=None
     values['Condensation_max']=None
+    values['Rain_max']=None
     values['Heating_max']=None
     values['total_max']=None
     values['liquid_max']=None
@@ -99,11 +100,14 @@ def make_values(track,timings,threshold_value_processes=None,threshold_value_mas
         cell=values.at[i,'cell']
         values.at[i,'Freezing_max']=track.loc[track['cell']==cell,'Freezing'].max()
         values.at[i,'Condensation_max']=track.loc[track['cell']==cell,'Condensation'].max()
+        values.at[i,'Rain_max']=track.loc[track['cell']==cell,'Rain formation'].max()
         values.at[i,'Heating_max']=track.loc[track['cell']==cell,'total_latent_heating'].max()
         values.at[i,'total_max']=track.loc[track['cell']==cell,'total_water_mass'].max()
         values.at[i,'liquid_max']=track.loc[track['cell']==cell,'liquid_water_mass'].max()
         values.at[i,'frozen_max']=track.loc[track['cell']==cell,'frozen_water_mass'].max()
         values.at[i,'frozen_fraction_max']=track.loc[track['cell']==cell,'frozen_water_fraction'].max()
+        values.at[i,'frozen_fraction_min']=track.loc[track['cell']==cell,'frozen_water_fraction'].min()
+
     return values
 
 
