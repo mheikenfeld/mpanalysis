@@ -119,11 +119,12 @@ def categorise(track,timing_in,values_in):
     category_out['category']=None
     Freezing_at_first=timing_in['Freezing_time_relative']==0
     no_Freezing=timing_in['Freezing_first'].isnull()
-    no_ice=values['frozen_fraction_max']<0.03
+    no_ice=values_in['frozen_fraction_max']<0.03
     Freezing_later=timing_out['Freezing_time_relative']>0 & ~timing_in['Freezing_first'].isnull()
+    no_warm=values_in['frozen_fraction_min']>0.2
 #     print(Freezing_at_first)
     for i in timing_out.index:
-        if Freezing_at_first[i] and not no_ice[i]:
+        if no_warm[i]:
             category_out.at[i,'category']='cold'
         elif no_Freezing[i] and no_ice[i]:
             category_out.at[i,'category']='warm'
