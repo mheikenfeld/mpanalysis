@@ -5,9 +5,9 @@ import os
 
 def get_timing(track,process=None,measure=None,value=None):
     columns = [('cell', int),
-               ('time_start', np.timedelta64 ),
-               ('time_end', np.timedelta64),
-               (f'{process}_{measure}', np.timedelta64)]
+               ('time_start', np.timedelta64(1,'ns') ),
+               ('time_end', np.timedelta64(1,'ns')),
+               (f'{process}_{measure}', np.timedelta64(1,'ns'))]
     # create the dataframe from a dict
     df_out=pd.DataFrame({k: pd.Series(dtype=t) for k, t in columns})
     #df_out=pd.DataFrame()
