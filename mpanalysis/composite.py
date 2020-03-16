@@ -402,7 +402,7 @@ def composite_Hydrometeors_time(savedir,timing,cells='all',type_mask='_TWC',shif
 
 
 
-def composite_Precipitation_time(savedir,timing,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
+def composite_Precipitation_time_(savedir,timing,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
     '''
     Composite calculation for microphysical processes including loading data from files into dictionary
     '''
@@ -450,3 +450,92 @@ def composite_Precipitation_time(savedir,timing,cells='all',type_mask='_TWC',shi
         Precipitation_Composite_mean[precip_type]=np.mean(Precipitation_shifted[precip_type],axis=0)
 
     return Precipitation_Composite_sum, Precipitation_Composite_mean
+
+# def composite_cells_slice(cell_dict,track_dict,timing,shiftby='initiation'):
+#     '''
+#     Create cloud composites for a dictionary containing individual vertically summed cloud profiles
+#     '''
+#     from copy import deepcopy
+#     n_total=n_left+n_right
+#     dim_shift=0
+#     cell_dict_shifted={}
+#     cubes_shifted={}
+#     cubelist_sum_Composite=iris.cube.CubeList()
+#     cubelist_mean_Composite=iris.cube.CubeList()
+#     cells=list(cell_dict.keys())
+#     for cube in cell_dict[cells[0]]:
+#         cubes_shifted[cube.name()]=[]
+#         cube_composite=iris.cube.Cube(np.zeros((n_total,cube.shape[1])),long_name=cube.name(),units=cube.units)
+#         time_coord=iris.coords.DimCoord(np.arange(-n_left,n_right),long_name='time',units='minute')
+#         cube_composite.add_dim_coord(time_coord,data_dim=0)
+#         cube_composite.add_dim_coord(cube.coord('geopotential_height'),data_dim=1)
+#         cubelist_sum_Composite.append(cube_composite)
+#     cubelist_mean_Composite=deepcopy(cubelist_sum_Composite)
+    
+#     for cell in cells:
+#         cubes_in=cell_dict[cell]
+#         track_integrated=track_dict[cell]
+#         shift, pad_left, pad_right, cut_left, cut_right=make_shift(timing_cell=timing.loc[timing['cell']==cell],track=track_integrated,
+#                                                                        shiftby=shiftby,
+#                                                                        n_left=n_left,n_right=n_right)        
+#         for cube in cubelist_sum_Composite:
+#             cube_i=cubes_in.extract_strict(cube.name()).data
+#             cube_i=cube_i[0+cut_left:cube_i.shape[0]-cut_right]
+#             # Why this?
+#             cube_i[cube_i>1e20]=0
+#             cube_shifted=np.pad(cube_i.data,((pad_left,pad_right),(0,0)), 'constant', constant_values=((0, 0),(0,0)))
+#             cubes_shifted[cube.name()].append(cube_shifted)
+                
+#     for cube in cubelist_sum_Composite:
+#         cube.data=np.sum(cubes_shifted[cube.name()],axis=dim_shift)
+
+#     for cube in cubelist_mean_Composite:
+#         cube.data=np.mean(cubes_shifted[cube.name()],axis=dim_shift)
+
+#     return cubelist_sum_Composite,cubelist_mean_Composite
+
+# def composite_Processes_slice(savedir,timing,cells='all',type_mask='_TWC',shiftby='initiation'):
+#     '''
+#     Composite calculation for microphysical processes including loading data from files into dictionary
+#     '''
+#     from copy import deepcopy
+#     if cells=='all':
+#         cells=timing['cell'].values.astype(int)
+#     cell_dict={}
+#     track_dict={}
+    
+#     for cell in cells:    
+#         savedir_cell=os.path.join(savedir,'cells',f'{cell}')    
+#         filename_profile=os.path.join(savedir_cell,f'Processes_lumped.nc')
+#         filename_track=os.path.join(savedir_cell,f'track_processes_lumped_integrated{type_mask}.h5')
+
+#         if (glob.glob(filename_profile) and glob.glob(filename_track)):
+#             Processes_sum=iris.load(filename_profile)
+#             cell_dict[cell]=iris.load(filename_profile)
+#             track_dict[cell]=pd.read_hdf(filename_track,'table')
+
+#     Processes_sum_Composite,Processes_mean_Composite=composite_cells_time(cell_dict,track_dict,timing,shiftby=shiftby)
+#     return Processes_sum_Composite,Processes_mean_Composite
+
+# def composite_Hydrometeors_slice(savedir,timing,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
+#     '''
+#     Composite calculation for hydrometeor mixing ratios including loading data from files into dictionary
+#     '''
+
+#     from copy import deepcopy
+#     if cells=='all':
+#         cells=timing['cell'].values.astype(int)
+#     cell_dict={}
+#     track_dict={}
+
+#     for cell in cells:  
+#         savedir_cell=os.path.join(savedir,'cells',f'{cell}')    
+#         filename_slice=os.path.join(savedir_cell,f'Hydrometeors_profile.nc')
+#         filename_track=os.path.join(savedir_cell,f'track_hydrometeors_integrated{type_mask}.h5')
+#         if (glob.glob(filename_slice) and glob.glob(filename_track)):
+#             Hydrometeors_sum=iris.load(filename_slice)
+#             cell_dict[cell]=iris.load(filename_slice)
+#     print('data loaded')
+
+#     Hydrometeors_sum_Composite,Hydrometeors_mean_Composite=composite_cells_time(cell_dict,track_dict,timing,shiftby=shiftby)
+#     return Hydrometeors_sum_Composite,Hydrometeors_mean_Composite
