@@ -1,9 +1,125 @@
-import numpy as np
-import pandas as pd
-import iris
 import os
+import iris
+import pandas as pd
+import glob
+import numpy as np
+
+def filter_track(Track,model):
+    '''
+    function to filter tracks by removing tracks around the border of the domain and and at the start and end of the time period
+    '''
+    # cells in the track:
+    if model is 'WRF':
+        x_min=5000
+        x_max=245000
+        y_min=5000
+        y_max=245000
+    if model is 'RAMS':
+        x_min=-120000
+        x_max=120000
+        y_min=-120000
+        y_max=120000
+    time_min=datetime.datetime(2013,6,19,21,10,0,0)
+    time_max=datetime.datetime(2013,6,19,23,50,0,0)
+    #Find all cells that are close to boundary either in time or space
+    cells_remove=Track[ (Track['projection_x_coordinate']<x_min) 
+                     |(Track['projection_x_coordinate']>x_max)
+                     |(Track['projection_y_coordinate']<y_min) 
+                     |(Track['projection_y_coordinate']>y_max)
+                     |(Track['time']<time_min)
+                     |(Track['time']>time_max) 
+                      ]['cell'].unique()
+    Track_filtered=Track[~Track['cell'].isin(cells_remove)]
+    # Add filtered DataFrame to dict for each simulation
+    #print(Track_filtered['cell'].dropna().unique())
+    #for cell in Track_filtered['cell'].unique():
+        #print(cell, Track[Track['cell']==cell]['time_cell'].max())
+    return Track_filtered, Track_filtered['cell'].dropna().unique()
+
+def water_content_from_hydrometeor(df_hydrometeors,type='total',microphysics_scheme=None):
+    '''
+    Function to calculate the total frozen and liquid water content
+    '''
+    from iris.cube import CubeList
+    if microphysics_scheme=='morrison':
+            list_liquid_hydrometeors=['QCLOUD','QRAIN']
+            list_frozen_hydrometeors=['QICE','QSNOW','QGRAUP']
+
+    elif microphysics_scheme=='thompson':
+            list_liquid_hydrometeors=['QCLOUD','QRAIN']
+            list_frozen_hydrometeors=['QICE','QSNOW','QGRAUP']
+
+    elif microphysics_scheme=='sbmfast':
+            list_liquid_hydrometeors=['QCLOUD','QRAIN']
+            list_frozen_hydrometeors=['QICE','QSNOW','QGRAUP']
+
+    elif microphysics_scheme=='sbmfull':
+            list_liquid_hydrometeors=['QCLOUD','QRAIN']
+            list_frozen_hydrometeors=['QICE','QSNOW','QGRAUP']
+
+    elif microphysics_scheme=='rams':
+            list_liquid_hydrometeors=['RCP','RDP','RRP']
+            list_frozen_hydrometeors=['RGP','RHP','RAP','RSP','RPP']
+    else:
+        raise ValueError('Unknown microphysics_scheme ' +str(microphysics_scheme) +', must be morrison, thompson, sbmfast, sbmfull or rams')
+    
+    list_total_hydrometeors=list_liquid_hydrometeors+list_frozen_hydrometeors
+
+    if type=='total':
+        mass=df_hydrometeors[list_total_hydrometeors[0]]
+        if len(list_total_hydrometeors)>1:
+            for hydrometeor in list_total_hydrometeors[1:]:
+                mass=mass+df_hydrometeors[hydrometeor]
+    if type=='liquid':
+        mass=df_hydrometeors[list_liquid_hydrometeors[0]]
+        if len(list_liquid_hydrometeors)>1:
+            for hydrometeor in list_liquid_hydrometeors[1:]:
+                mass=mass+df_hydrometeors[hydrometeor]
+    if type=='frozen':
+        mass=df_hydrometeors[list_frozen_hydrometeors[0]]
+        if len(list_frozen_hydrometeors)>1:
+            for hydrometeor in list_frozen_hydrometeors[1:]:
+                mass=mass+df_hydrometeors[hydrometeor]
+    return mass
+
+
+def load_track_processes_mass(savedir,microphysics_scheme):
+    '''
+    Load data from cellwise preprocessed data for calculations around the composites and categorisation
+    '''
+    list_processes=['Condensation','Evaporation','Freezing','Melting','Deposition','Sublimation','Rain formation']
+    Track=pd.read_hdf(os.path.join(savedir,'Track.h5'),'table')
+    #Track_filtered,cells=filter_track(Track,model)
+    Track_filtered=Track
+    cells=Track_filtered['cell'].dropna().unique()
+
+    Track_processes=pd.DataFrame()
+    Track_hydrometeors=pd.DataFrame()
+    for cell in cells:
+        filename=glob.glob(os.path.join(savedir,f'cells/{int(cell)}/track_processes_lumped_integrated_TWC.h5'))
+        if filename:
+            track_cell_processes=pd.read_hdf(filename[0],'table')
+            Track_processes=Track_processes.append(track_cell_processes,ignore_index=False)
+            for process in list_processes:
+                Track_processes[process]=abs(Track_processes[process])
+        filename=glob.glob(os.path.join(savedir,f'cells/{int(cell)}/track_hydrometeors_integrated_TWC.h5'))
+        if filename:
+            track_cell_hydrometeors=pd.read_hdf(filename[0],'table')
+            Track_hydrometeors=Track_hydrometeors.append(track_cell_hydrometeors)
+    Track_hydrometeors['total_water_mass']=water_content_from_hydrometeor(Track_hydrometeors,type='total',microphysics_scheme=microphysics_scheme)
+    Track_hydrometeors['liquid_water_mass']=water_content_from_hydrometeor(Track_hydrometeors,type='liquid',microphysics_scheme=microphysics_scheme)
+    Track_hydrometeors['frozen_water_mass']=water_content_from_hydrometeor(Track_hydrometeors,type='frozen',microphysics_scheme=microphysics_scheme)
+    Track_hydrometeors['frozen_water_fraction']=Track_hydrometeors['frozen_water_mass']/Track_hydrometeors['total_water_mass']
+
+    Track_all=Track_processes.merge(Track_hydrometeors[['feature','total_water_mass','liquid_water_mass','frozen_water_mass','frozen_water_fraction']],on='feature',how='left')
+    #Track_all=Track_processes
+    return Track_all
+
 
 def get_timing(track,process=None,measure=None,value=None):
+    '''
+    Calculate timings of important stages in the evolution of the tracked cells
+    '''
     columns = [('cell', int),
                ('time_start', np.timedelta64(1,'ns') ),
                ('time_end', np.timedelta64(1,'ns')),
@@ -15,8 +131,12 @@ def get_timing(track,process=None,measure=None,value=None):
         index=None
         if measure=='max':
             index=track_cell[process].idxmax()
+            print(index)
+            print(type(index))
             # reject a maximum smaller than the threshold value
-            if track_cell.loc[index,process]<value:
+            if np.isnan(index):
+                index=None
+            elif track_cell.loc[index,process]<value:
                 index=None
             
         elif measure=='min':
@@ -41,10 +161,12 @@ def get_timing(track,process=None,measure=None,value=None):
                                 'lifetime': lifetime, 
                                 f'{process}_{measure}': time_process},ignore_index=True)
     df_out.reset_index(drop=True,inplace=True)
-#     print(df_out)
     return df_out
 
 def latent_heating(track):
+    '''
+    Calculate total latent heating from microphysical process rates
+    '''
     L_sl=334e3
     L_lv=2.26476e6
     L_sv=L_sl+L_lv
@@ -58,6 +180,9 @@ def latent_heating(track):
     return latent_heating
 
 def make_timings(track,threshold_value_processes=None,threshold_value_mass=None):
+    '''
+    Calculate the timing of specific stages of the cloud evolution
+    '''
     track['total_latent_heating']=latent_heating(track)
     timing_latent_heating_max=get_timing(track,process='total_latent_heating',measure='max',value=threshold_value_processes)
     timing_Freezing_first=get_timing(track,process='Freezing',measure='first',value=threshold_value_processes)
@@ -86,6 +211,9 @@ def make_timings(track,threshold_value_processes=None,threshold_value_mass=None)
     return timing_out
 
 def make_values(track,timings,threshold_value_processes=None,threshold_value_mass=None):
+    '''
+    Evaluate properties at specific times of the evolution of the cloud for further analyses
+    '''
     values=timings[['cell','time_start','time_end']].copy()
     values['Freezing_max']=None
     values['Condensation_max']=None
@@ -110,12 +238,12 @@ def make_values(track,timings,threshold_value_processes=None,threshold_value_mas
 
     return values
 
-
 def categorise(track,timing_in,values_in):
+    '''
+    Categorise clouds into different types
+    '''
     timing_out=timing_in
     category_out=timing_in[['cell','time_start','time_end']].copy()
-#     display(track.head(5))
-#     display(timing_in.head(5))
     category_out['category']=None
     Freezing_at_first=timing_in['Freezing_time_relative']==0
     no_Freezing=timing_in['Freezing_first'].isnull()
@@ -134,178 +262,150 @@ def categorise(track,timing_in,values_in):
             category_out.at[i,'category']='rest'
     return category_out
 
-def composite_Processes_time(timing,model,case,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
-    list_processes=['Condensation','Evaporation','Freezing','Melting','Deposition','Sublimation','Rain formation']
+def make_shift(timing_cell,track,shiftby,n_left,n_right):
+    '''
+    Shift individual clouds for cloud composites
+    '''
+    time_freezing=timing_cell['Freezing_first'].dt.total_seconds().values[0]
+    time_maximum_heating=timing_cell['Heating_max'].dt.total_seconds().values[0]
+    time_maximum_mass=timing_cell['total_max'].dt.total_seconds().values[0]
+#         time_maximum_rain=timing_cell['Rain_max'].dt.total_seconds().values[0]
+
+    lifetime=timing_cell['lifetime'].dt.total_seconds().values[0]
+    time_axis=track['time_cell'].dt.total_seconds().values
+        
+    length=len(time_axis)
+
+    if shiftby is 'initiation':
+        shift=0
+    elif shiftby is 'glaciation':
+        if not np.isnan(time_freezing):        
+            shift=np.argwhere(abs(time_axis-time_freezing)<1)[0][0]
+        else:
+            shift=length
+    elif shiftby is 'maximum_heating':
+        if not np.isnan(time_maximum_heating):        
+            shift=np.argwhere(abs(time_axis-time_maximum_heating)<1)[0][0]
+        else:
+            shift=length
+
+    elif shiftby is 'maximum_mass':
+        if not np.isnan(time_maximum_heating):        
+            shift=np.argwhere(abs(time_axis-time_maximum_heating)<1)[0][0]
+        else:
+            shift=length
+    else:
+        raise ValueError(f'shiftby {shiftby} unknown, must be initiation,glaciation,maximum_heating,maximum_mass or maximum_rain')
+
+    pad_left=n_left-shift
+    pad_right=n_right-(len(time_axis)-shift)
+    cut_left=0
+    cut_right=0
+    if pad_left<0:
+        cut_left=-pad_left
+        pad_left=0
+
+    if pad_right<0:
+        cut_right=-pad_right
+        pad_right=0
+    return shift, pad_left, pad_right, cut_left, cut_right
+    
+def composite_cells_time(cell_dict,track_dict,timing,shiftby='initiation',n_left=100,n_right=100):
+    '''
+    Create cloud composites for a dictionary containing individual vertically summed cloud profiles
+    '''
+    from copy import deepcopy
+    n_total=n_left+n_right
+    dim_shift=0
+    cell_dict_shifted={}
+    cubes_shifted={}
+    cubelist_sum_Composite=iris.cube.CubeList()
+    cubelist_mean_Composite=iris.cube.CubeList()
+    cells=list(cell_dict.keys())
+    for cube in cell_dict[cells[0]]:
+        cubes_shifted[cube.name()]=[]
+        cube_composite=iris.cube.Cube(np.zeros((n_total,cube.shape[1])),long_name=cube.name(),units=cube.units)
+        time_coord=iris.coords.DimCoord(np.arange(-n_left,n_right),long_name='time',units='minute')
+        cube_composite.add_dim_coord(time_coord,data_dim=0)
+        cube_composite.add_dim_coord(cube.coord('geopotential_height'),data_dim=1)
+        cubelist_sum_Composite.append(cube_composite)
+    cubelist_mean_Composite=deepcopy(cubelist_sum_Composite)
+    
+    for cell in cells:
+        cubes_in=cell_dict[cell]
+        track_integrated=track_dict[cell]
+        shift, pad_left, pad_right, cut_left, cut_right=make_shift(timing_cell=timing.loc[timing['cell']==cell],track=track_integrated,
+                                                                       shiftby=shiftby,
+                                                                       n_left=n_left,n_right=n_right)        
+        for cube in cubelist_sum_Composite:
+            cube_i=cubes_in.extract_strict(cube.name()).data
+            cube_i=cube_i[0+cut_left:cube_i.shape[0]-cut_right]
+            # Why this?
+            cube_i[cube_i>1e20]=0
+            cube_shifted=np.pad(cube_i.data,((pad_left,pad_right),(0,0)), 'constant', constant_values=((0, 0),(0,0)))
+            cubes_shifted[cube.name()].append(cube_shifted)
+                
+    for cube in cubelist_sum_Composite:
+        cube.data=np.sum(cubes_shifted[cube.name()],axis=dim_shift)
+
+    for cube in cubelist_mean_Composite:
+        cube.data=np.mean(cubes_shifted[cube.name()],axis=dim_shift)
+
+    return cubelist_sum_Composite,cubelist_mean_Composite
+
+def composite_Processes_time(savedir,timing,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
+    '''
+    Composite calculation for microphysical processes including loading data from files into dictionary
+    '''
     from copy import deepcopy
     if cells=='all':
         cells=timing['cell'].values.astype(int)
-
-    cell_0=timing['cell'].values.astype(int)[0]
-    savedir_0=os.path.join(acpc_workspace,f'Analysis/mheiken/Tracking/Save_1min/{version}/{model}/{case}/cells/{cell_0}')
-    Processes_sum_0=iris.load(os.path.join(savedir_0,f'Processes_lumped_profile{type_mask}.nc'))
-    Processes_sum_0=Processes_sum_0.extract(list_processes)
-
-    Processes_sum_Composite=iris.cube.CubeList()
+    cell_dict={}
+    track_dict={}
     
-    n_total=n_left+n_right
-    
-    Processes_shifted={}
-    for process in Processes_sum_0:
-        Processes_shifted[process.name()]=[]
-        process_composite=iris.cube.Cube(np.zeros((n_total,process.shape[1])),long_name=process.name(),units=process.units)
-        time_coord=iris.coords.DimCoord(np.arange(-n_left,n_right),long_name='time',units='minute')
-        process_composite.add_dim_coord(time_coord,data_dim=0)
-        process_composite.add_dim_coord(process.coord('geopotential_height'),data_dim=1)
-        Processes_sum_Composite.append(process_composite)
-    Processes_mean_Composite=deepcopy(Processes_sum_Composite)
-    
-    #print(cells)
-    if list(cells):
-        for i_cell,cell in enumerate(cells):
-    #         print('###############:')
-    #         print('cell:',cell)
-            savedir_i=os.path.join(acpc_workspace,f'Analysis/mheiken/Tracking/Save_1min/{version}/{model}/{case}/cells/{cell}')
+    for cell in cells:    
+        savedir_cell=os.path.join(savedir,'cells',f'{cell}')    
+        filename_profile=os.path.join(savedir_cell,f'Processes_lumped_profile{type_mask}.nc')
+        filename_track=os.path.join(savedir_cell,f'track_processes_lumped_integrated{type_mask}.h5')
+        if (glob.glob(filename_profile) and glob.glob(filename_track)):
+            Processes_sum=iris.load(filename_profile)
+            cell_dict[cell]=iris.load(filename_profile)
+            track_dict[cell]=pd.read_hdf(filename_track,'table')
 
-            filename_profile=os.path.join(savedir_i,f'Processes_lumped_profile{type_mask}.nc')
-            filename_track=os.path.join(savedir_i,f'track_processes_lumped_integrated_TWC{type_mask}.h5')
-            if (glob.glob(filename_profile) and glob.glob(filename_track)):
-                Processes_sum=iris.load(filename_profile)
-                Processes_sum=Processes_sum.extract(list_processes)
-
-                Track_Processes_integrated=pd.read_hdf(filename_track,'table')
-
-                timing_cell=timing[timing['cell']==cell]
-                time_freezing=timing_cell['Freezing_first'].dt.total_seconds().values[0]
-                time_maximum_heating=timing_cell['Heating_max'].dt.total_seconds().values[0]
-                lifetime=timing_cell['lifetime'].dt.total_seconds().values[0]
-                time_axis=Track_Processes_integrated['time_cell'].dt.total_seconds().values
-
-                length=len(time_axis)
-
-                if shiftby is 'initiation':
-                    shift=0
-                elif shiftby is 'glaciation':
-                    if not np.isnan(time_freezing):        
-                        shift=np.argwhere(abs(time_axis-time_freezing)<1)[0][0]
-                    else:
-                        shift=length
-                elif shiftby is 'maximum_heating':
-                    if not np.isnan(time_maximum_heating):        
-                        shift=np.argwhere(abs(time_axis-time_maximum_heating)<1)[0][0]
-                    else:
-                        shift=length
-
-                pad_left=n_left-shift
-                pad_right=n_right-(len(time_axis)-shift)
-                cut_left=0
-                cut_right=0
-                if pad_left<0:
-                    cut_left=-pad_left
-                    pad_left=0
-
-                if pad_right<0:
-                    cut_right=-pad_right
-                    pad_right=0
-
-                for process in Processes_sum_Composite:
-                    process_i=Processes_sum.extract_strict(process.name()).data
-                    process_i=process_i[0+cut_left:process_i.shape[0]-cut_right]
-                    process_i[process_i>1e20]=0
-                    process_shifted=np.pad(process_i,((pad_left,pad_right),(0,0)), 'constant', constant_values=((0, 0),(0,0)))
-                    Processes_shifted[process.name()].append(process_shifted)
-
-        for process in Processes_sum_Composite:
-            process.data=np.sum(Processes_shifted[process.name()],axis=0)
-
-        for process in Processes_mean_Composite:
-            process.data=np.mean(Processes_shifted[process.name()],axis=0)
-
+    Processes_sum_Composite,Processes_mean_Composite=composite_cells_time(cell_dict,track_dict,timing,shiftby=shiftby,n_left=n_left,n_right=n_right)
     return Processes_sum_Composite,Processes_mean_Composite
 
-def composite_Hydrometeors_time(timing,model,case,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
+def composite_Hydrometeors_time(savedir,timing,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
+    '''
+    Composite calculation for hydrometeor mixing ratios including loading data from files into dictionary
+    '''
+
     from copy import deepcopy
     if cells=='all':
         cells=timing['cell'].values.astype(int)
+    cell_dict={}
+    track_dict={}
 
-    cell_0=timing['cell'].values.astype(int)[0]
-    savedir_0=os.path.join(acpc_workspace,f'Analysis/mheiken/Tracking/Save_1min/{version}/{model}/{case}/cells/{cell_0}')
-    Hydrometeors_sum_0=iris.load(os.path.join(savedir_0,f'Hydrometeors_profile{type_mask}.nc'))
+    for cell in cells:  
+        savedir_cell=os.path.join(savedir,'cells',f'{cell}')    
+        filename_profile=os.path.join(savedir_cell,f'Hydrometeors_profile{type_mask}.nc')
+        filename_track=os.path.join(savedir_cell,f'track_hydrometeors_integrated{type_mask}.h5')
+        if (glob.glob(filename_profile) and glob.glob(filename_track)):
+            Hydrometeors_sum=iris.load(filename_profile)
 
-    Hydrometeors_sum_Composite=iris.cube.CubeList()
-    
-    n_total=n_left+n_right
-    
-    Hydrometeors_shifted={}
-    for hydrometeor in Hydrometeors_sum_0:
-        Hydrometeors_shifted[hydrometeor.name()]=[]
-        hydrometeor_composite=iris.cube.Cube(np.zeros((n_total,hydrometeor.shape[1])),long_name=hydrometeor.name(),units=hydrometeor.units)
-        time_coord=iris.coords.DimCoord(np.arange(-n_left,n_right),long_name='time',units='minute')
-        hydrometeor_composite.add_dim_coord(time_coord,data_dim=0)
-        hydrometeor_composite.add_dim_coord(hydrometeor.coord('geopotential_height'),data_dim=1)
-        Hydrometeors_sum_Composite.append(hydrometeor_composite)
-    Hydrometeors_mean_Composite=deepcopy(Hydrometeors_sum_Composite)
-    
-    if list(cells):
-        for i_cell,cell in enumerate(cells):
-            savedir_i=os.path.join(acpc_workspace,f'Analysis/mheiken/Tracking/Save_1min/{version}/{model}/{case}/cells/{cell}')
+            cell_dict[cell]=iris.load(filename_profile)
+            track_dict[cell]=pd.read_hdf(filename_track,'table')
+    print('data loaded')
 
-            filename_profile=os.path.join(savedir_i,f'Hydrometeors_profile{type_mask}.nc')
-            filename_track=os.path.join(savedir_i,f'track_hydrometeros_integrated{type_mask}.h5')
-            if (glob.glob(filename_profile) and glob.glob(filename_track)):
-                Hydrometeors_sum=iris.load(filename_profile)
-
-                Track_Hydrometeors_integrated=pd.read_hdf(filename_track,'table')
-
-                timing_cell=timing[timing['cell']==cell]
-                time_freezing=timing_cell['Freezing_first'].dt.total_seconds().values[0]
-                lifetime=timing_cell['lifetime'].dt.total_seconds().values[0]
-                time_maximum_heating=timing_cell['Heating_max'].dt.total_seconds().values[0]
-                time_axis=Track_Hydrometeors_integrated['time_cell'].dt.total_seconds().values
-
-                length=len(time_axis)
-
-                if shiftby is 'initiation':
-                    shift=0
-                elif shiftby is 'glaciation':
-                    if not np.isnan(time_freezing):        
-                        shift=np.argwhere(abs(time_axis-time_freezing)<1)[0][0]
-                    else:
-                        shift=length
-                elif shiftby is 'maximum_heating':
-                    if not np.isnan(time_maximum_heating):        
-                        shift=np.argwhere(abs(time_axis-time_maximum_heating)<1)[0][0]
-                    else:
-                        shift=length
-                        
-                pad_left=n_left-shift
-                pad_right=n_right-(len(time_axis)-shift)
-                cut_left=0
-                cut_right=0
-                if pad_left<0:
-                    cut_left=-pad_left
-                    pad_left=0
-
-                if pad_right<0:
-                    cut_right=-pad_right
-                    pad_right=0
-
-                for hydrometeor in Hydrometeors_sum_Composite:
-                    hydrometeor_i=Hydrometeors_sum.extract_strict(hydrometeor.name()).data
-                    hydrometeor_i=hydrometeor_i[0+cut_left:hydrometeor_i.shape[0]-cut_right]
-                    hydrometeor_i[hydrometeor_i>1e20]=0
-                    hydrometeor_shifted=np.pad(hydrometeor_i,((pad_left,pad_right),(0,0)), 'constant', constant_values=((0, 0),(0,0)))
-                    Hydrometeors_shifted[hydrometeor.name()].append(hydrometeor_shifted)
-
-        for hydrometeor in Hydrometeors_sum_Composite:
-            hydrometeor.data=np.sum(Hydrometeors_shifted[hydrometeor.name()],axis=0)
-
-        for hydrometeor in Hydrometeors_mean_Composite:
-            hydrometeor.data=np.mean(Hydrometeors_shifted[hydrometeor.name()],axis=0)
-
+    Hydrometeors_sum_Composite,Hydrometeors_mean_Composite=composite_cells_time(cell_dict,track_dict,timing,shiftby=shiftby,n_left=n_left,n_right=n_right)
     return Hydrometeors_sum_Composite,Hydrometeors_mean_Composite
 
 
-def composite_Precipitation_time(timing,model,case,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
+
+def composite_Precipitation_time(savedir,timing,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
+    '''
+    Composite calculation for microphysical processes including loading data from files into dictionary
+    '''
     from copy import deepcopy
     
     if cells=='all':
@@ -314,11 +414,11 @@ def composite_Precipitation_time(timing,model,case,cells='all',type_mask='_TWC',
     cell_0=timing['cell'].values.astype(int)[0]
     
     list_precip_types= ['surface_precipitation','surface_precipitation_accumulated']#,'surface_precipitation_instantaneous']
-    savedir_0=os.path.join(acpc_workspace,f'Analysis/mheiken/Tracking/Save_1min/{version}/{model}/{case}/cells/{cell_0}')
-    Precipitation_0=pd.read_hdf(os.path.join(savedir_0,f'track_precipitation{type_mask}.h5','table'))
-    
-    if model=='WRF':
-        Precipitation_0['surface_precipitation']=1/3600*Precipitation_0['surface_precipitation_average']
+    savedir_0=os.path.join(savedir,'cells',f'{cell_0}')
+    Precipitation_0=pd.read_hdf(os.path.join(savedir_0,f'track_precipitation{type_mask}.h5'),'table')
+    print(Precipitation_0)
+    #if model is 'WRF':
+    #    Precipitation_0['surface_precipitation']=1/3600*Precipitation_0['surface_precipitation_average']
 
     Precipitation_Composite_sum=pd.DataFrame()
     Precipitation_shifted={}
@@ -330,47 +430,14 @@ def composite_Precipitation_time(timing,model,case,cells='all',type_mask='_TWC',
         Precipitation_Composite_sum['time']=np.arange(-n_left,n_right)
     Precipitation_Composite_mean=deepcopy(Precipitation_Composite_sum)
     for i_cell,cell in enumerate(cells):
-        savedir_i=os.path.join(acpc_workspace,f'Analysis/mheiken/Tracking/Save_1min/{version}/{model}/{case}/cells/{cell}')
+        savedir_i=os.path.join(savedir,'cells',f'{cell}')
 #        filename_profile=os.path.join(savedir_i,f'Hydrometeors_profile_TWC_{cell}.nc')
         filename_track=os.path.join(savedir_i,f'track_precipitation{type_mask}.h5')
         if (glob.glob(filename_track)):
-            #precip_sum=iris.load(filename_profile)
             precip_sum=pd.read_hdf(filename_track,'table')
-            if model=='WRF':
-                precip_sum['surface_precipitation']=1/3600*precip_sum['surface_precipitation_average']
-
-            timing_cell=timings[model][case][timings[model][case]['cell']==cell]
-            time_freezing=timing_cell['Freezing_first'].dt.total_seconds().values
-            lifetime=timing_cell['lifetime'].dt.total_seconds().values
-            time_maximum_heating=timing_cell['Heating_max'].dt.total_seconds().values[0]
-            time_axis=precip_sum['time_cell'].dt.total_seconds().values
-
-            length=len(time_axis)
-            
-            if shiftby is 'initiation':
-                shift=0
-            elif shiftby is 'glaciation':
-                if not np.isnan(time_freezing):        
-                    shift=np.argwhere(abs(time_axis-time_freezing)<1)[0][0]
-                else:
-                    shift=length
-            elif shiftby is 'maximum_heating':
-                if not np.isnan(time_maximum_heating):        
-                    shift=np.argwhere(abs(time_axis-time_maximum_heating)<1)[0][0]
-                else:
-                    shift=length
-            
-            pad_left=n_left-shift
-            pad_right=n_right-(len(time_axis)-shift)
-            cut_left=0
-            cut_right=0
-            if pad_left<0:
-                cut_left=-pad_left
-                pad_left=0
-
-            if pad_right<0:
-                cut_right=-pad_right
-                pad_right=0
+            shift, pad_left, pad_right, cut_left, cut_right=make_shift(timing_cell=timing.loc[timing['cell']==cell],track=precip_sum,
+                                                                           shiftby=shiftby,
+                                                                           n_left=n_left,n_right=n_right)
             
             for precip_type in list_precip_types:
                 precip_i=precip_sum[precip_type].values
