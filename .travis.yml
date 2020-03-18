@@ -1,23 +1,20 @@
 language: python
 #sudo: false
 # choose python versions
-os: 
-  - linux
-#  - osx
-#  - windows
-
-
 python:
-  - "2.7"
   - "3.6"
   - "3.7"
+    #  - "2.7"
 
 install:
 
   # Install miniconda
   # -----------------
-  - export CONDA_BASE=http://repo.continuum.io/miniconda/Miniconda3;
- 
+  - PYTHON_TARGET=$TRAVIS_PYTHON_VERSION
+  - echo $PYTHON_TARGET
+  - if [[ $PYTHON_TARGET == 3* ]]; then
+      export CONDA_BASE=http://repo.continuum.io/miniconda/Miniconda3;
+  - echo $CONDA_BASE
   - wget ${CONDA_BASE}-latest-Linux-x86_64.sh -O miniconda.sh;
 
   - bash miniconda.sh -b -p $HOME/miniconda
@@ -34,23 +31,28 @@ install:
 
   # Customise the testing environment
   # ---------------------------------
+  #install requirements from conda-forge based on conda-requirements.txt:
   - conda install -c conda-forge --quiet --file conda_requirements.txt
-  - conda install -c conda-forge --quiet pytest 
-  - PREFIX=$HOME/miniconda/envs/$ENV_NAME
-  - pip install --upgrade git+ssh://git@github.com/mheikenfeld/piecharts.git
-  - pip install --upgrade git+ssh://git@github.com/mheikenfeld/mpdiag.git
+  #install pytest:
+  - conda install -c conda-forge --quiet pytest
+  # install packages directly from github:
+  - pip install git+https://github.com/mheikenfeld/piecharts.git
+  - pip install git+https://github.com/mheikenfeld/mpdiag.git
 
+  - PREFIX=$HOME/miniconda/envs/$ENV_NAME
 
   # Output debug info
   - conda list
   - conda info -a
 
   # Install
-  #- python setup.py --quiet install
   - pip install .
-  # to check if package has been installed
+
+  # Output debug info
   - conda list
+
 # command to run tests
 #script
 script:
   - pytest
+
