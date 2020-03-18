@@ -1,5 +1,9 @@
 language: python
 #sudo: false
+os: 
+  - linux
+#  - osx
+#  - windows
 # choose python versions
 python:
   - "3.6"
@@ -14,6 +18,7 @@ install:
   - echo $PYTHON_TARGET
   - if [[ $PYTHON_TARGET == 3* ]]; then
       export CONDA_BASE=http://repo.continuum.io/miniconda/Miniconda3;
+    fi
   - echo $CONDA_BASE
   - wget ${CONDA_BASE}-latest-Linux-x86_64.sh -O miniconda.sh;
 
