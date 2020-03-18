@@ -4,84 +4,6 @@ import pandas as pd
 import glob
 import numpy as np
 
-def filter_track(Track,model):
-    '''
-    function to filter tracks by removing tracks around the border of the domain and and at the start and end of the time period
-    '''
-    # cells in the track:
-    if model is 'WRF':
-        x_min=5000
-        x_max=245000
-        y_min=5000
-        y_max=245000
-    if model is 'RAMS':
-        x_min=-120000
-        x_max=120000
-        y_min=-120000
-        y_max=120000
-    time_min=datetime.datetime(2013,6,19,21,10,0,0)
-    time_max=datetime.datetime(2013,6,19,23,50,0,0)
-    #Find all cells that are close to boundary either in time or space
-    cells_remove=Track[ (Track['projection_x_coordinate']<x_min) 
-                     |(Track['projection_x_coordinate']>x_max)
-                     |(Track['projection_y_coordinate']<y_min) 
-                     |(Track['projection_y_coordinate']>y_max)
-                     |(Track['time']<time_min)
-                     |(Track['time']>time_max) 
-                      ]['cell'].unique()
-    Track_filtered=Track[~Track['cell'].isin(cells_remove)]
-    # Add filtered DataFrame to dict for each simulation
-    #print(Track_filtered['cell'].dropna().unique())
-    #for cell in Track_filtered['cell'].unique():
-        #print(cell, Track[Track['cell']==cell]['time_cell'].max())
-    return Track_filtered, Track_filtered['cell'].dropna().unique()
-
-def water_content_from_hydrometeor(df_hydrometeors,type='total',microphysics_scheme=None):
-    '''
-    Function to calculate the total frozen and liquid water content
-    '''
-    from iris.cube import CubeList
-    if microphysics_scheme=='morrison':
-            list_liquid_hydrometeors=['QCLOUD','QRAIN']
-            list_frozen_hydrometeors=['QICE','QSNOW','QGRAUP']
-
-    elif microphysics_scheme=='thompson':
-            list_liquid_hydrometeors=['QCLOUD','QRAIN']
-            list_frozen_hydrometeors=['QICE','QSNOW','QGRAUP']
-
-    elif microphysics_scheme=='sbmfast':
-            list_liquid_hydrometeors=['QCLOUD','QRAIN']
-            list_frozen_hydrometeors=['QICE','QSNOW','QGRAUP']
-
-    elif microphysics_scheme=='sbmfull':
-            list_liquid_hydrometeors=['QCLOUD','QRAIN']
-            list_frozen_hydrometeors=['QICE','QSNOW','QGRAUP']
-
-    elif microphysics_scheme=='rams':
-            list_liquid_hydrometeors=['RCP','RDP','RRP']
-            list_frozen_hydrometeors=['RGP','RHP','RAP','RSP','RPP']
-    else:
-        raise ValueError('Unknown microphysics_scheme ' +str(microphysics_scheme) +', must be morrison, thompson, sbmfast, sbmfull or rams')
-    
-    list_total_hydrometeors=list_liquid_hydrometeors+list_frozen_hydrometeors
-
-    if type=='total':
-        mass=df_hydrometeors[list_total_hydrometeors[0]]
-        if len(list_total_hydrometeors)>1:
-            for hydrometeor in list_total_hydrometeors[1:]:
-                mass=mass+df_hydrometeors[hydrometeor]
-    if type=='liquid':
-        mass=df_hydrometeors[list_liquid_hydrometeors[0]]
-        if len(list_liquid_hydrometeors)>1:
-            for hydrometeor in list_liquid_hydrometeors[1:]:
-                mass=mass+df_hydrometeors[hydrometeor]
-    if type=='frozen':
-        mass=df_hydrometeors[list_frozen_hydrometeors[0]]
-        if len(list_frozen_hydrometeors)>1:
-            for hydrometeor in list_frozen_hydrometeors[1:]:
-                mass=mass+df_hydrometeors[hydrometeor]
-    return mass
-
 
 def load_track_processes_mass(savedir,microphysics_scheme):
     '''
@@ -89,7 +11,6 @@ def load_track_processes_mass(savedir,microphysics_scheme):
     '''
     list_processes=['Condensation','Evaporation','Freezing','Melting','Deposition','Sublimation','Rain formation']
     Track=pd.read_hdf(os.path.join(savedir,'Track.h5'),'table')
-    #Track_filtered,cells=filter_track(Track,model)
     Track_filtered=Track
     cells=Track_filtered['cell'].dropna().unique()
 
@@ -417,8 +338,6 @@ def composite_Precipitation_time(savedir,timing,cells='all',type_mask='_TWC',shi
     savedir_0=os.path.join(savedir,'cells',f'{cell_0}')
     Precipitation_0=pd.read_hdf(os.path.join(savedir_0,f'track_precipitation{type_mask}.h5'),'table')
     print(Precipitation_0)
-    #if model is 'WRF':
-    #    Precipitation_0['surface_precipitation']=1/3600*Precipitation_0['surface_precipitation_average']
 
     Precipitation_Composite_sum=pd.DataFrame()
     Precipitation_shifted={}
