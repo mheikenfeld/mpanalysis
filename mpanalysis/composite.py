@@ -300,7 +300,7 @@ def composite_Processes_time(savedir,timing,cells='all',type_mask='_TWC',shiftby
     Processes_sum_Composite,Processes_mean_Composite=composite_cells_time(cell_dict,track_dict,timing,shiftby=shiftby,n_left=n_left,n_right=n_right)
     return Processes_sum_Composite,Processes_mean_Composite
 
-def composite_Hydrometeors_time(savedir,timing,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
+def composite_Hydrometeors_mass_time(savedir,timing,cells='all',type_mask='_TWC',shiftby='initiation',n_left=100,n_right=100):
     '''
     Composite calculation for hydrometeor mixing ratios including loading data from files into dictionary
     '''
@@ -436,7 +436,7 @@ def composite_Processes_slice(savedir,timing,cells='all',shiftby='initiation'):
     return Processes_sum_Composite_along,Processes_mean_Composite_along,Processes_sum_Composite_across,Processes_mean_Composite_across
 
 
-def composite_Hydrometeors_slice(savedir,timing,cells='all',shiftby='initiation'):
+def composite_Hydrometeors_mass_slice(savedir,timing,cells='all',shiftby='initiation'):
     '''
     Composite calculation for microphysical processes including loading data from files into dictionary
     '''
